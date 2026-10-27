@@ -2,7 +2,7 @@
 
 This log records the status of project decisions. The requirements specification ([requirements.md](requirements.md)) remains the source of truth for product behaviour; this log explains *which* decisions are settled, which are provisional, and which still need review.
 
-Last updated: 27 October 2026 (specification version 1.3).
+Last updated: 27 October 2026 (specification version 1.5).
 
 ## Status categories
 
@@ -48,7 +48,7 @@ Last updated: 27 October 2026 (specification version 1.3).
 | C-27 | Ordinary assessment observation dates must fall within the student's relevant enrollment period, for all roles. | 5.5 |
 | C-28 | Exceptional historical corrections require a separate, explicitly authorised, audited process (see S-04). | 5.5 |
 | C-29 | Observation notes cannot be backdated; their date is the recording date and their timestamp is server-generated and immutable. | 6.4 |
-| C-30 | Assessment history is append-only; corrections create new entries. | 5.5 |
+| C-30 | Assessment history is append-only during its authorised retention period; corrections create new entries. Records are not ordinarily deleted through application workflows. | 5.5 |
 | C-31 | Assessment ordering: observation date, then original immutable recording timestamp, then stable unique ID. | 5.5 |
 | C-32 | Skill-level decline is derived from ordered history, not a stored `previous_level`. A retained `previous_level` is only a display snapshot. | 5.5, 5.7 |
 | C-33 | Two distinct decline indicators: skill-level (consecutive assessments of the same skill) and term-level subject score (against the previous term). Missing data is not decline; neither indicator proves regression. | 5.7, 8.4 |
@@ -90,6 +90,8 @@ Last updated: 27 October 2026 (specification version 1.3).
 | C-63 | Never send student names or variants (including other students'), admission numbers or other student identifiers, dates of birth, photos, rosters, guardian information, or teacher names (including first names) to Gemini. Teacher attribution is added on the server. Apply data minimisation to all other personal identifiers. | 11.4 |
 | C-64 | If redaction is uncertain, block the AI request and ask the user to review the note. | 9.10 |
 | C-64a | Flexible student name model: primary name, optional Hindi/Devanagari name, and any number of nicknames or spelling variants (no fixed limit). All are used for server-side redaction, including references to other students in notes. | 7.1, 9.10 |
+| C-64b | Redaction covers student names and variants, guardian/parent names and variants, teacher/staff names including first names and nicknames, other people named in free-text notes, and common direct identifiers (phone numbers, email addresses, admission numbers, configured identifiers). Known English and Hindi/Devanagari variants are used; name lists stay server-side. Redaction is not guaranteed to catch everything; uncertain cases are blocked. | 9.10 |
+| C-64c | English, Hindi, and mixed-script redaction tests (synthetic data) must pass before the AI milestone is approved. | 9.10 |
 | C-65 | AI output is always a draft until reviewed and approved by an Admin; AI never modifies student records. | 9.8, 9.11 |
 | C-66 | Teachers may generate and edit their own drafts for assigned students; they cannot approve reports or edit another user's draft. | 9.8 |
 | C-67 | Admins can generate, edit, and approve reports school-wide; an Admin who generates a report must explicitly review and approve it. | 9.8 |
@@ -119,8 +121,17 @@ Last updated: 27 October 2026 (specification version 1.3).
 |---|---|---|
 | C-95 | Development, tests, demos, and development databases use synthetic student data only. Synthetic data must not be derived from identifiable real students. | 11.8 |
 | C-96 | Real student data may not be used until the project owner explicitly approves it after the required legal and security reviews. | 11.7, 11.8 |
-| C-97 | Permanent retention of assessment history is not assumed. Assessment records stay append-only during the authorised retention period; permanence or deletion is decided only after legal review (LR-3). | 5.5, 7, 11.6 |
+| C-97 | Permanent retention of assessment history is not assumed. Assessment records stay append-only during the authorised retention period; the retention period and when deletion or anonymisation is required are decided only after legal review (LR-3, LR-7). | 5.5, 7, 11.6 |
 | C-98 | `.env.example` variable names remain placeholders until M1, when configuration is finalised and documented. Actual secrets are never committed. | 15.1 |
+| C-99 | Absolute "never delete" language is replaced by: not ordinarily deleted through application workflows, subject to the approved retention policy and applicable legal requirements. Deactivation disables access but does not automatically delete records; a departing student's enrollment is closed and records are kept only for their authorised retention period. | 3.1, 4.3, 7, 8.1, 11.6 |
+| C-100 | Deletion requests follow a documented process: receive, verify, evaluate, authorise, execute (controlled, authorised, audited deletion, pseudonymisation, or anonymisation), and record. Legal holds and preservation obligations suspend purges and deletion for affected records; placing and releasing holds is authorised and audited. | 11.9 |
+| C-101 | Deletion approval is not assumed for every Admin. The authorised approver, verification, conflict-of-interest handling, and any second approval are defined in S-05. | 11.9 |
+| C-102 | Legal holds preserve records without changing normal access permissions. | 11.9 |
+| C-103 | Blocked- or redacted-AI messages must not disclose guardian or other personal information to teachers, including which name or identifier matched. | 9.10 |
+| C-104 | Guardian and staff name variants are stored in a flexible, access-controlled schema (no fixed limit; guardian variants Admin-only). Exact schema finalised during design. | 7.1 |
+| C-105 | Redaction is layered: known names and variants; direct identifiers; possible unknown names. Any possible unknown name counts as uncertainty and blocks the request. NER is an unapproved dependency pending evaluation. Redaction must never be described as infallible. | 9.10 |
+| C-106 | Pseudonymisation (reversible, still personal data) is distinguished from anonymisation (irreversible). Permanent attribution is not promised after irreversible anonymisation. The retention-purge process is narrowly scoped and audited; its privileged database role is reviewed before implementation. | 11.1, 11.9 |
+| C-107 | Audit records use opaque, stable identifiers where references are necessary and embed no personal information. Handling of references after deletion or anonymisation is defined in S-05. | 11.6 |
 
 ## Provisional operational defaults (P)
 
@@ -133,22 +144,27 @@ Last updated: 27 October 2026 (specification version 1.3).
 
 ## Items requiring legal review (LR)
 
+**Mandatory gate:** every LR item must be resolved, and the project owner must explicitly approve real-data use, before any real student data is used. Until then, development, tests, demos, and development databases use synthetic data only (C-95, C-96). These items are not settled rules and must not be treated as such.
+
 | ID | Item | Spec | Required before |
 |---|---|---|---|
 | LR-1 | Retention periods for audit metadata (P-01) and deleted note content (P-02). | 11.5, 11.6 | Real student data |
 | LR-2 | Parent/guardian notice, consent, and child-data obligations under India's DPDP Act, 2023, including requirements for children's educational records. | 4.2, 11.5 | Real student data |
-| LR-3 | Retention of assessment history: whether it may be retained permanently or when deletion may be required, and the approved deletion process. Until decided, records stay append-only and permanent retention is not assumed (C-97). | 5.5, 7, 11.5, 11.6 | Real student data |
+| LR-3 | Retention period for assessment history, and when deletion or anonymisation is required. Until decided, records stay append-only and permanent retention is not assumed (C-97). | 5.5, 7, 11.5, 11.6 | Real student data |
 | LR-4 | Gemini current pricing, data-handling terms (including any use of submitted content), and usage reporting. | 9.7, 15.3 | Real student data sent to Gemini |
-| LR-5 | Handling of deletion requests and legal holds. | 11.5, 11.6 | Real student data |
-| LR-6 | Backups: backup retention and how deletion or retention obligations apply to backups. | 11.3, 11.5 | Real student data |
+| LR-5 | Deletion requests and legal holds: who may request, verification standards, response obligations, and which preservation obligations apply (C-100). | 11.5, 11.9 | Real student data |
+| LR-6 | Backups: backup retention and how deletion or retention obligations apply to backups. | 11.3, 11.5, 11.9 | Real student data |
+| LR-7 | Final retention and deletion policy for all record types, including deactivated user profiles, records of students who have left, notes, reports, chats, AI usage records, and audit metadata. | 11.5, 11.6 | Real student data |
 
 ## Items requiring security review and testing (SR)
 
 | ID | Item | Spec | Required before |
 |---|---|---|---|
-| SR-1 | RLS design: per-transaction identity mechanism, privileged helper functions, grants, audit immutability controls, retention purge process. Unapproved until reviewed and tested. Enabling RLS alone is not proof of security. | 11.1, 15.2 | Protected student data tables are implemented |
-| SR-2 | Redaction reliability for English, Hindi, and mixed-script content, including other children's names and nicknames. | 9.10 | AI milestone |
+| SR-1 | RLS design: per-transaction identity mechanism, privileged helper functions, grants, audit immutability controls. Unapproved until reviewed and tested. Enabling RLS alone is not proof of security. | 11.1, 15.2 | Protected student data tables are implemented |
+| SR-2 | Redaction reliability for English, Hindi, and mixed-script content, covering student, guardian, teacher/staff, and other names and common direct identifiers (C-64b, C-64c, C-105). | 9.10 | AI milestone approval |
 | SR-3 | Admin account recovery procedure (documented and tested). | 11.2, 11.7 | Deployment |
+| SR-4 | Retention-purge and anonymisation process and its privileged database role: narrow scope, grants, auditing (C-106). | 11.1, 11.9 | Purge process implementation |
+| SR-5 | Evaluation of any NER library for unknown-name detection (unapproved dependency). | 9.10 | Adding NER, if ever proposed |
 
 ## Specifications required before later milestones (S)
 
@@ -156,10 +172,11 @@ These rules are provisionally defined in the specification but must be specified
 
 | ID | Specification | Spec | Required before |
 |---|---|---|---|
-| S-01 | Redaction specification: name variants, detection rules, uncertainty criteria, blocking behaviour, test corpus. | 9.10 | AI milestone |
+| S-01 | Redaction specification: layered design (known names and variants for students, guardians, staff; direct identifiers; possible unknown names), uncertainty criteria, blocking behaviour, non-disclosing user messages, wording that does not claim infallibility, test corpus (English, Hindi, mixed script). | 9.10 | AI milestone |
 | S-02 | AI request accounting: what is recorded per request, cost estimation, hourly/monthly reset behaviour, concurrency handling, uncertain-outcome rules. | 9.9 | AI milestone |
 | S-03 | Detailed report workflow: states, revisions, edit rights, approval, preview vs final PDF. | 9.8 | Reports milestone |
 | S-04 | Exceptional historical-correction process for assessments: who authorises it, what is audited, which rules it may bypass. | 5.5 | Its implementation |
+| S-05 | Deletion-request and legal-hold procedure: channels; requester verification; authorised approver, conflict-of-interest handling, and any second approval; pseudonymisation vs anonymisation per record type; narrowly scoped, audited retention-purge process and its privileged role (SR-4); audit-reference handling after deletion or anonymisation; backups; informing requesters. | 11.6, 11.9 | Purge implementation and real student data (after legal review) |
 
 ## Open items (OI)
 
@@ -187,3 +204,5 @@ No open items. New ones will be added here as they arise.
 | 27 October 2026 | Log created with specification version 1.1. |
 | 27 October 2026 | Resolved OI-1 to OI-6; added OI-7 to OI-10 for interpretations not yet confirmed; specification version 1.2. |
 | 27 October 2026 | Resolved OI-7 to OI-10; added C-95 to C-98; broadened LR-2 and LR-3; added LR-5 and LR-6; specification version 1.3. |
+| 27 October 2026 | Added C-64b, C-64c, C-99, C-100, LR-7, S-05; updated C-30, C-97, LR-3, LR-5, LR-6, SR-2, S-01; specification version 1.4. |
+| 27 October 2026 | Confirmed review interpretations as C-101 to C-107; added the LR mandatory gate, SR-4, SR-5; narrowed SR-1; expanded S-01 and S-05; specification version 1.5. |
