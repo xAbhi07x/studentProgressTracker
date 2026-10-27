@@ -1,6 +1,6 @@
 School Student Progress Tracker
 Product Requirements and Functional Specification
-Version: 1.2 — Consolidated Requirements Baseline with Approved Planning Decisions
+Version: 1.3 — Consolidated Requirements Baseline with Approved Planning Decisions
 Date: 27 October 2026
 Status: Approved for implementation planning. Application implementation has not started.
 Audience: School leadership, client stakeholders, developers, QA, and AI coding assistants, including GitHub Copilot
@@ -194,7 +194,7 @@ Critical distinction: Not assessed is not the same as Not yet. A newly added ski
 5.5 Recording Progress and History
 1.	Every assessment update creates a new row in progress_entries.
 2.	Each row records the student, skill, new level, observation date, original recording timestamp, author, and whether it is a confirmation. If a previous-level value is stored, it is only a snapshot of the level displayed to the user when the entry was recorded; it must not be used to derive history, ordering, or decline.
-3.	Progress entries are append-only. They must never be edited or deleted, including by admins.
+3.	Progress entries are append-only. During the authorised retention period they must never be edited or deleted by any application user, including admins. Whether assessment history is retained permanently, or when deletion may be required, is subject to legal review (Sections 11.5 and 11.6); any deletion must use only a process approved after that review.
 4.	Assessments for the same student and skill are ordered by observation date, then by the original recording timestamp, then by a stable unique identifier. The recording timestamp is system-generated, immutable, and never supplied or edited by users.
 5.	The current level of a skill is the last entry in this ordering. The level as of any past date is the last entry, in this ordering, whose observation date is on or before that date.
 6.	All charts, dashboards, metrics, decline indicators, and AI answers must use the same ordering and as-of calculation rule.
@@ -345,14 +345,15 @@ Workflow 5: Year-end promotion
 7. Logical Data Model and Database Requirements
 The logical data model below defines the information the application must store. The database is PostgreSQL and the backend is Django (Section 15.1). The final schema, constraints, and migrations are deferred technical decisions (Section 15.2).
 All primary entities should use stable identifiers. Tables should include creation timestamps where appropriate. Database changes must be managed through version-controlled migrations, not manual production database edits.
-Tables containing historical records, especially progress_entries and audit_log, must be append-only for all application users. Audit metadata may be removed only by the controlled, audited retention process in Section 11.6. Progress entries are never deleted (see decision-log.md LR-3 regarding legal review).
+Tables containing historical records, especially progress_entries and audit_log, must be append-only for all application users. Audit metadata may be removed only by the controlled, audited retention process in Section 11.6. Permanent retention of progress entries must not be assumed; their retention period and any deletion process are subject to legal review (Section 11.6).
 7.1 Core Entities
 Entity	Important fields	Constraints and notes
 profiles	id, full_name, role, preferred_language, is_active	User ID corresponds to the authentication identity. Roles are teacher or admin. Multiple individual Admin accounts are allowed. Created by Admin; deactivate rather than delete. Must support Admin-managed password recovery with a mandatory password change and server-enforced per-user session invalidation (Section 11.2).
 academic_years	label, start_date, end_date, is_current	Exactly one academic year is current. Academic years must not overlap.
 terms	academic_year_id, name, start_date, end_date	Terms must not overlap within an academic year.
 classes	name_en, name_hi, sort_order, next_class_id, is_active	One section per grade in Version 1; the model must allow multiple sections per grade later (Section 4.5). The next-class relationship supports promotion. UKG has no next class.
-students	admission_no, full_name, date_of_birth, gender, admission_date, status	Admission number is unique. No photo fields. No guardian contact fields in this table. How known name variants (Devanagari spellings, nicknames) needed for redaction (Section 9.10) are stored is pending (decision-log.md OI-7).
+students	admission_no, full_name (primary name), name_hi (Hindi/Devanagari name, optional), date_of_birth, gender, admission_date, status	Admission number is unique. No photo fields. No guardian contact fields in this table. Additional known nicknames and spelling variants are stored as separate related records (see student_name_variants).
+student_name_variants	student_id, variant, script	Any number of nicknames or spelling variants per student, in any script. Used only for server-side redaction (Section 9.10); never sent to an AI provider.
 guardians	full_name, relationship, phone, email, is_primary	Separate guardian records. Admin-only access. Support multiple guardians per student.
 student_guardians	student_id, guardian_id	Links students and guardians; support multiple guardians per student.
 enrollments	student_id, class_id, academic_year_id, roll_no, started_on, ended_on	Dated enrollment history is preserved. A student may have several enrollment periods in one academic year, but periods for the same student must never overlap. Current class is derived from the open enrollment period.
@@ -540,7 +541,12 @@ Requirements:
 •	30 AI messages per user per hour.
 •	100 AI messages per user per month.
 •	₹500 estimated school-wide AI spend per month.
-2.	Each actual AI model request counts toward the limits, including chat messages, report generation and regeneration, and class-insight generation and refresh. Serving a cached result that requires no model request does not count. How model requests map onto the per-user message limits is pending (decision-log.md OI-8) and is part of specification S-02.
+2.	One message equals one actual outbound AI model request. This includes requests for chat responses, report generation or regeneration, and class-insight generation or refresh.
+•	If one user action causes several model requests, each request counts separately.
+•	A retry counts only when another request is actually sent to the provider.
+•	Requests rejected by validation before any model request is sent do not count.
+•	Cached results that require no model request do not count.
+•	The hourly and monthly limits apply consistently across all AI features.
 3.	When the outcome of a request is uncertain and the request may have reached the provider, count it conservatively.
 4.	Usage tracking and enforcement occur on the server, with atomic quota updates that resist concurrent requests. Limits must not be bypassable by modifying requests, and the system must not rely on estimates supplied by the browser.
 5.	Usage must be tracked sufficiently to monitor school-wide estimated spend and per-user consumption. The Admin can view AI usage and configure the limits.
@@ -549,13 +555,14 @@ Requirements:
 8.	The ₹500 threshold is an application-level estimate. It must not be described as a guaranteed Google billing cap unless provider-side controls are verified to support that claim.
 9.	The detailed AI request-accounting rules must be specified and approved before the AI milestone begins (Section 15.5).
 9.10 Redaction Before Sending Data to Gemini
-1.	Before any content is sent to Gemini, redact known student names and their variants, including English spellings, Hindi/Devanagari spellings, and known nicknames.
-2.	Redact references to other children as well as to the current student.
+1.	Before any content is sent to Gemini, redact each student's primary name, Hindi/Devanagari name where available, and all known nicknames and spelling variants (Section 7.1).
+2.	Redact references to other students as well as to the current student, including in observation notes.
 3.	Detect and redact common phone numbers, email addresses, admission numbers, and configured direct identifiers.
 4.	Redaction must not rely exclusively on exact-text replacement.
 5.	If redaction is uncertain, block the AI request and ask the user to review the note. Content must not be sent when identifying information cannot be reliably protected.
-6.	Redaction must be tested with English, Hindi, and mixed-script examples.
-7.	The detailed redaction specification must be approved before the AI milestone begins (Section 15.5).
+6.	The name and variant lists used for redaction are server-side only. The student roster, name lists, and student identifiers are never sent to Gemini.
+7.	Redaction must be tested with English, Hindi, and mixed-script examples, using synthetic data only (Section 11.8).
+8.	The detailed redaction specification must be approved before the AI milestone begins (Section 15.5).
 9.11 AI-Generated Insights and Human Review
 1.	AI-generated insights are suggestions only. They must not automatically modify student records or assessment history.
 2.	AI insights must be grounded in available assessment data and relevant recorded observations. The system must not present unsupported claims as facts.
@@ -668,18 +675,25 @@ Permitted information may include:
 •	Skill levels and relevant assessment dates.
 •	Subject names.
 •	Relevant notes after redaction (Section 9.10).
-•	Teacher first names only when needed for attribution. Prefer adding teacher attribution on the server instead of sending teacher names (decision-log.md OI-9).
+Apply data minimisation to every request: send only what the task needs. Teacher attribution, where needed, is added by the server and is never sent to the provider.
 The following must never be sent to the AI provider:
-•	Student names, including the names of other children.
-•	Admission number.
+•	Student names, including Hindi/Devanagari names, nicknames, spelling variants, and the names of other students.
+•	Admission numbers or other student identifiers.
 •	Date of birth.
 •	Student photo.
 •	Guardian names or contact details.
-•	Class roster.
-•	Any unnecessary identifying information.
+•	Teacher names, including first names.
+•	Class roster or student name lists.
+•	Any other unnecessary personal identifier.
 Before real student data is sent, verify and document Gemini's current pricing, data-handling terms, and usage reporting (Section 15.3).
 11.5 Legal and Policy Review
-India's Digital Personal Data Protection Act, 2023, includes provisions relevant to processing children's personal data. Before real student data is used, the school must consult a suitable advisor to determine applicable notice, consent, retention, and other child-data obligations, even though parents are not application users. The review must include the retention periods in Section 11.6 and the permanent retention of assessment history.
+India's Digital Personal Data Protection Act, 2023, includes provisions relevant to processing children's personal data. Before real student data is used, the school must consult a suitable advisor to determine applicable notice, consent, and other child-data obligations, even though parents are not application users. The review must cover at least:
+•	Requirements for children's educational records.
+•	Retention periods, including those in Section 11.6, and whether assessment history may be retained permanently.
+•	Handling of deletion requests.
+•	Legal holds.
+•	Backups, including backup retention and deletion from backups.
+•	Data protection obligations, including AI provider processing.
 This specification is not legal advice.
 11.6 Audit Log and Data Retention
 1.	Audit metadata includes only necessary fields: actor, timestamp, action, entity type, record ID, an appropriate reason (for example, a deletion reason), and, for edits, the names of the changed fields. Before/after values are never recorded. Audit metadata must not contain passwords, secrets, deleted note content, or unnecessary student information.
@@ -688,7 +702,8 @@ This specification is not legal advice.
 4.	Audit records must be protected against unauthorised modification or deletion.
 5.	Purging records after their retention period expires must be a controlled, authorised process, and each purge must itself be audited.
 6.	Deleting an observation note must not modify or delete assessment records. Assessment history remains append-only.
-7.	Backup retention is documented separately (Section 11.3).
+7.	Assessment history: permanent retention must not be assumed. Assessment records remain append-only during the authorised retention period. Whether retention is permanent, or when deletion may be required, is decided only after the legal review (Section 11.5). Any resulting deletion must follow a documented, authorised, and audited process.
+8.	Backup retention is documented separately (Section 11.3).
 11.7 Pre-Deployment Requirements
 Before deployment with real student data:
 •	HTTPS is configured for all traffic.
@@ -697,6 +712,11 @@ Before deployment with real student data:
 •	The privacy and legal review (Section 11.5) is complete.
 •	Gemini pricing, data-handling terms, and usage reporting have been verified and documented (Section 15.3).
 •	A pilot using synthetic data has been completed.
+•	The project owner has explicitly approved real-data use after the legal and security reviews (Section 11.8).
+11.8 Synthetic Data and Approval of Real Data
+1.	Development, automated tests, demos, and development databases must use synthetic student data only.
+2.	Synthetic data must not be derived from identifiable real students.
+3.	Real student data must not be used anywhere until the project owner explicitly approves it after the required legal (Section 11.5) and security reviews. Until then, synthetic data is the only permitted data.
 12. Reliability and Error Handling
 This section reconstructs the reliability topic referenced by the original specification's missing Section 10.
 •	The app requires internet connectivity; offline-first entry and background synchronization are not included in Version 1.
@@ -725,7 +745,7 @@ The application is not considered ready for school use until the following are d
 •	Removing a teacher from one class revokes access immediately but preserves historical attribution.
 •	Teachers cannot access guardian information through any route.
 •	Guardian contact information is never sent to the AI provider.
-•	Student names (including other children's names in English, Hindi, and mixed script), admission numbers, dates of birth, photos, and class rosters are not sent to AI. AI requests are blocked when redaction is uncertain.
+•	Student names (including Hindi/Devanagari names, nicknames, spelling variants, and other students' names in English, Hindi, and mixed script), admission numbers, dates of birth, photos, class rosters, and teacher names are not sent to AI. AI requests are blocked when redaction is uncertain.
 •	Deactivated users cannot sign in or continue using existing sessions.
 •	Sessions expire after 60 minutes of inactivity, enforced by the server; “sign out of all devices” invalidates every session for that user.
 •	Admin-managed password recovery uses a one-time mechanism, forces a password change, and never displays or stores credentials in plaintext. The Admin recovery procedure has been tested.
@@ -835,4 +855,5 @@ Version	Date	Change
 1.0	26 October 2026	Consolidated the original specification and recorded review decisions; removed student-photo scope; added Admin-only guardian records; made student- and class-level conversational AI explicit; added enrollment edge cases, report revision behavior, reliability requirements, and acceptance criteria.
 1.1	27 October 2026	Recorded the approved stack (Django, Django Templates, Tailwind CLI via npm, PostgreSQL, Gemini) and removed the Claude/Sonnet proposal; merged decisions previously appended after the end of the specification into numbered sections; added teacher historical-access rule (3.3), class sections (4.5), decline indicators (5.7), language support (6.9), report approval and revisions (9.8), AI usage limits (9.9), redaction (9.10), AI human review (9.11), audit and retention (11.6), and pre-deployment requirements (11.7); made report approval Admin-only; prohibited backdating of observation notes; defined assessment ordering and enrollment-period date rules; set 60-minute server-side inactivity timeout and Admin-managed password recovery; allowed multiple individual Admin accounts; limited export to PDFs of approved reports; set the Asia/Kolkata time zone; corrected the chart-section cross-reference.
 1.2	27 October 2026	Renamed the specification file to requirements.md. Allowed multiple non-overlapping enrollment periods per academic year and defined transfer as a move between classes within the school. Audit log records changed field names only, never values. Added a seven-day Admin-only recovery window for deleted notes. Skill-level decline is an indicator only and does not raise attention flags. Marked name-variant storage, AI message mapping, and teacher-name handling as pending.
+1.3	27 October 2026	Synthetic data only until explicit real-data approval (11.8). Flexible student name model: primary name, optional Hindi/Devanagari name, and unlimited nicknames/variants used for redaction (7.1, 9.10). One AI message equals one outbound model request (9.9). Teacher names are never sent to Gemini (11.4). Permanent retention of assessment history is no longer assumed and is subject to legal review (5.5, 7, 11.5, 11.6).
 End of specification.

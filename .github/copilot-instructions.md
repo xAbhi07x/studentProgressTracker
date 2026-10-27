@@ -23,13 +23,19 @@ These instructions apply to every coding task in this repository.
 - The runtime database account must be separate from the migration/owner account, must not own protected tables, and must not bypass RLS.
 - Treat the RLS identity mechanism, privileged helper functions, grants, audit immutability, and retention purge as unapproved until reviewed and tested. Enabling RLS alone does not prove security.
 - Guardian information is Admin-only. Never expose it to teachers through views, search, logs, PDFs, or AI.
-- Never send student names (including other children's names in English or Hindi), admission numbers, dates of birth, photos, rosters, or guardian data to Gemini. If redaction is uncertain, block the request.
+- Never send student names or variants (primary, Hindi/Devanagari, nicknames, other students' names), admission numbers or other student identifiers, dates of birth, photos, rosters, guardian data, or teacher names (including first names) to Gemini. Add teacher attribution on the server. Send only the minimum data each request needs.
+- Redact using each student's primary name, Hindi/Devanagari name, and all known variants, including references to other students. If redaction is uncertain, block the request.
+- Count one AI message per actual outbound model request, and enforce the hourly and monthly quotas atomically on the server.
 - Determine authors from the server session; never trust client-supplied author IDs or timestamps.
 - Keep API keys and database credentials in environment variables. Never commit secrets or place them in templates or static JavaScript.
-- Do not log student names, guardian contact details, note text, chat content, or credentials.
+- Do not log student names or name variants, guardian contact details, note text, chat content, or credentials.
+
+## Data used in development
+- Use synthetic student data only in development, tests, demos, fixtures, and development databases. Never derive synthetic data from identifiable real students.
+- Never use, import, or request real student data unless the project owner has explicitly approved it after the legal and security reviews.
 
 ## Data integrity
-- Assessment history (`progress_entries`) is append-only: no updates or deletes, including by Admins. Corrections are new entries.
+- Assessment history (`progress_entries`) is append-only: no updates or deletes by any application user, including Admins. Corrections are new entries. Do not assume permanent retention and do not build any deletion path for assessments until the legal review (LR-3) has decided.
 - Order assessments by observation date, then immutable recording timestamp, then stable unique ID. Derive decline from this ordering, never from a stored `previous_level`.
 - Teachers may backdate assessments by up to 30 days; future dates are rejected; ordinary assessment dates must fall within the enrollment period. Observation notes cannot be backdated.
 - Audit records are protected from modification and record changed field names only, never before/after values. Deleted note content never goes into the audit log.
@@ -43,7 +49,6 @@ These instructions apply to every coding task in this repository.
 
 ## Testing and reporting
 - Add or update automated tests for business rules, authorization boundaries, and changed behaviour. Permission tests must include cross-class access, guessed IDs, deactivated users, absent database identity, context leakage, and direct SQL under the runtime role, where relevant.
-- Never use real student data in tests or development unless explicitly approved (see decision-log.md OI-10).
 - Run the relevant tests and report exactly what was run and the actual results. Never claim a test passed if it was not run; state clearly what was not run and why.
 
 ## After each task

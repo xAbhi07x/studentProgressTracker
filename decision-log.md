@@ -2,7 +2,7 @@
 
 This log records the status of project decisions. The requirements specification ([requirements.md](requirements.md)) remains the source of truth for product behaviour; this log explains *which* decisions are settled, which are provisional, and which still need review.
 
-Last updated: 27 October 2026 (specification version 1.2).
+Last updated: 27 October 2026 (specification version 1.3).
 
 ## Status categories
 
@@ -84,11 +84,12 @@ Last updated: 27 October 2026 (specification version 1.2).
 
 | ID | Decision | Spec |
 |---|---|---|
-| C-60 | Each actual AI model request counts toward the limits (chat, report generation/regeneration, class-insight generation/refresh). Cached results without a model request do not count. Uncertain outcomes that may have reached the provider count conservatively. How requests map onto the message limits is OI-8. | 9.9 |
+| C-60 | One message equals one actual outbound AI model request (chat responses, report generation/regeneration, class-insight generation/refresh). Each request from a multi-request action counts separately; retries count only when another request is actually sent; requests rejected by validation before sending, and cached results, do not count. Uncertain outcomes that may have reached the provider count conservatively. Hourly and monthly limits apply consistently across AI features. | 9.9 |
 | C-61 | Limits are enforced server-side with atomic quota updates that resist concurrent requests. An `ai_usage` record is kept for each AI model request to enforce the limits. | 7.1, 9.9 |
 | C-62 | The ₹500 threshold is an application-level estimate, not a guaranteed Google billing cap. | 9.9, 15.3 |
-| C-63 | Never send student names (including other children), admission numbers, dates of birth, photos, rosters, or guardian information to Gemini. Prefer adding teacher attribution server-side. | 11.4 |
+| C-63 | Never send student names or variants (including other students'), admission numbers or other student identifiers, dates of birth, photos, rosters, guardian information, or teacher names (including first names) to Gemini. Teacher attribution is added on the server. Apply data minimisation to all other personal identifiers. | 11.4 |
 | C-64 | If redaction is uncertain, block the AI request and ask the user to review the note. | 9.10 |
+| C-64a | Flexible student name model: primary name, optional Hindi/Devanagari name, and any number of nicknames or spelling variants (no fixed limit). All are used for server-side redaction, including references to other students in notes. | 7.1, 9.10 |
 | C-65 | AI output is always a draft until reviewed and approved by an Admin; AI never modifies student records. | 9.8, 9.11 |
 | C-66 | Teachers may generate and edit their own drafts for assigned students; they cannot approve reports or edit another user's draft. | 9.8 |
 | C-67 | Admins can generate, edit, and approve reports school-wide; an Admin who generates a report must explicitly review and approve it. | 9.8 |
@@ -112,6 +113,15 @@ Last updated: 27 October 2026 (specification version 1.2).
 | C-90 | Before deployment: HTTPS, tested backup restoration, documented and tested recovery procedure, privacy/legal review, synthetic-data pilot, and Gemini verification. | 11.7 |
 | C-91 | Deferred to their milestones: Gemini model/version and SDK/API interface (AI), charting library (dashboards), hosting, monitoring, backups and production static files (deployment), CI provider. | 15.2 |
 
+### Data handling and environment
+
+| ID | Decision | Spec |
+|---|---|---|
+| C-95 | Development, tests, demos, and development databases use synthetic student data only. Synthetic data must not be derived from identifiable real students. | 11.8 |
+| C-96 | Real student data may not be used until the project owner explicitly approves it after the required legal and security reviews. | 11.7, 11.8 |
+| C-97 | Permanent retention of assessment history is not assumed. Assessment records stay append-only during the authorised retention period; permanence or deletion is decided only after legal review (LR-3). | 5.5, 7, 11.6 |
+| C-98 | `.env.example` variable names remain placeholders until M1, when configuration is finalised and documented. Actual secrets are never committed. | 15.1 |
+
 ## Provisional operational defaults (P)
 
 | ID | Default | Spec | Notes |
@@ -126,9 +136,11 @@ Last updated: 27 October 2026 (specification version 1.2).
 | ID | Item | Spec | Required before |
 |---|---|---|---|
 | LR-1 | Retention periods for audit metadata (P-01) and deleted note content (P-02). | 11.5, 11.6 | Real student data |
-| LR-2 | Parent/guardian notice, consent, and child-data obligations under India's DPDP Act, 2023. | 4.2, 11.5 | Real student data |
-| LR-3 | Permanent retention of assessment history (progress entries can never be deleted). If legal review requires deletion after a period, this conflicts with Section 5.5 and must be raised for a decision. | 5.5, 7, 11.5 | Real student data |
+| LR-2 | Parent/guardian notice, consent, and child-data obligations under India's DPDP Act, 2023, including requirements for children's educational records. | 4.2, 11.5 | Real student data |
+| LR-3 | Retention of assessment history: whether it may be retained permanently or when deletion may be required, and the approved deletion process. Until decided, records stay append-only and permanent retention is not assumed (C-97). | 5.5, 7, 11.5, 11.6 | Real student data |
 | LR-4 | Gemini current pricing, data-handling terms (including any use of submitted content), and usage reporting. | 9.7, 15.3 | Real student data sent to Gemini |
+| LR-5 | Handling of deletion requests and legal holds. | 11.5, 11.6 | Real student data |
+| LR-6 | Backups: backup retention and how deletion or retention obligations apply to backups. | 11.3, 11.5 | Real student data |
 
 ## Items requiring security review and testing (SR)
 
@@ -151,12 +163,7 @@ These rules are provisionally defined in the specification but must be specified
 
 ## Open items (OI)
 
-| ID | Issue | Consequence | Needed before |
-|---|---|---|---|
-| OI-7 | How known student name variants (Devanagari spellings, nicknames) needed for redaction are stored — for example, as a field on the student record — and who maintains them. | Affects the student data model and Admin screens. Redaction of variants (C-64, Section 9.10) is confirmed; only the storage approach is pending. | Student/enrollment milestone |
-| OI-8 | Whether each AI model request counts as exactly one "message" toward the 30-per-hour and 100-per-month limits, or whether some requests are weighted differently. | Affects quota accounting (part of S-02). | AI milestone |
-| OI-9 | Whether teacher first names may ever be sent to Gemini for attribution, or attribution is always added on the server. Current wording: first names only when needed; server-side attribution preferred. | Affects data sent to the provider. | AI milestone |
-| OI-10 | Whether tests and development must use synthetic data only. (The pre-deployment pilot must use synthetic data; that is confirmed.) | Affects test fixtures and developer setup. | M1 |
+No open items. New ones will be added here as they arise.
 
 ### Resolved open items
 
@@ -168,6 +175,10 @@ These rules are provisionally defined in the specification but must be specified
 | OI-4 | Audit log records changed field names only, never before/after values. | C-41 |
 | OI-5 | Specification renamed to `requirements.md`. | — |
 | OI-6 | Git repository initialised. | — |
+| OI-7 | Flexible name model with primary name, optional Devanagari name, and unlimited variants, used for redaction. | C-64a |
+| OI-8 | One message equals one outbound model request, with the counting rules in C-60. | C-60 |
+| OI-9 | Teacher names, including first names, are never sent to Gemini. | C-63 |
+| OI-10 | Synthetic data only until explicit approval after legal and security reviews. | C-95, C-96 |
 
 ## Change history
 
@@ -175,3 +186,4 @@ These rules are provisionally defined in the specification but must be specified
 |---|---|
 | 27 October 2026 | Log created with specification version 1.1. |
 | 27 October 2026 | Resolved OI-1 to OI-6; added OI-7 to OI-10 for interpretations not yet confirmed; specification version 1.2. |
+| 27 October 2026 | Resolved OI-7 to OI-10; added C-95 to C-98; broadened LR-2 and LR-3; added LR-5 and LR-6; specification version 1.3. |

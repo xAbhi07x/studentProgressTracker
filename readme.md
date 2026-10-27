@@ -75,7 +75,7 @@ React and Django REST Framework are not part of the v1 stack. The Django Admin s
 
 **Current status:** Planning and initial setup. Application implementation has not started.
 
-The product requirements (specification version 1.2) and planning decisions have been documented. Repository setup and a minimal Django foundation are the next stages.
+The product requirements (specification version 1.3) and planning decisions have been documented. Repository setup and a minimal Django foundation are the next stages. Only synthetic student data may be used until real-data use is explicitly approved after legal and security reviews.
 
 ## Project Documentation
 
